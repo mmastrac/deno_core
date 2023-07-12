@@ -147,7 +147,7 @@ macro_rules! try_number {
   ($n:ident $type:ident $is:ident) => {
     if $n.$is() {
       // SAFETY: v8 handles can be transmuted
-      let n: &v8::Uint32 = unsafe { std::mem::transmute($n) };
+      let n: &v8::$type = unsafe { std::mem::transmute($n) };
       return n.value() as _;
     }
   };
@@ -177,7 +177,6 @@ pub fn to_i32(number: &v8::Value) -> i32 {
   0
 }
 
-#[allow(unused)]
 pub fn to_u64(number: &v8::Value) -> u32 {
   try_number!(number Uint32 is_uint32);
   try_number!(number Int32 is_int32);
@@ -190,7 +189,6 @@ pub fn to_u64(number: &v8::Value) -> u32 {
   0
 }
 
-#[allow(unused)]
 pub fn to_i64(number: &v8::Value) -> i32 {
   try_number!(number Uint32 is_uint32);
   try_number!(number Int32 is_int32);
@@ -201,6 +199,30 @@ pub fn to_i64(number: &v8::Value) -> i32 {
     return n.i64_value().0 as _;
   }
   0
+}
+
+pub fn to_f32(number: &v8::Value) -> f32 {
+  try_number!(number Uint32 is_uint32);
+  try_number!(number Int32 is_int32);
+  try_number!(number Number is_number);
+  if number.is_big_int() {
+    // SAFETY: v8 handles can be transmuted
+    let n: &v8::BigInt = unsafe { std::mem::transmute(number) };
+    return n.i64_value().0 as _;
+  }
+  0.0
+}
+
+pub fn to_f64(number: &v8::Value) -> f64 {
+  try_number!(number Uint32 is_uint32);
+  try_number!(number Int32 is_int32);
+  try_number!(number Number is_number);
+  if number.is_big_int() {
+    // SAFETY: v8 handles can be transmuted
+    let n: &v8::BigInt = unsafe { std::mem::transmute(number) };
+    return n.i64_value().0 as _;
+  }
+  0.0
 }
 
 /// Expands `inbuf` to `outbuf`, assuming that `outbuf` has at least 2x `input_length`.
@@ -401,6 +423,8 @@ mod tests {
       op_test_result_primitive_err,
       op_test_bool,
       op_test_bool_result,
+      op_test_float,
+      op_test_float_result,
       op_test_string_owned,
       op_test_string_ref,
       op_test_string_cow,
@@ -640,6 +664,37 @@ mod tests {
       1,
       "op_test_bool_result",
       "try { op_test_bool_result(false); assert(false) } catch (e) {}",
+    )?;
+    Ok(())
+  }
+
+  #[op2(core, fast)]
+  pub fn op_test_float(a: f32, b: f64) -> f32 {
+    a + b as f32
+  }
+
+  #[op2(core, fast)]
+  pub fn op_test_float_result(a: f32, b: f64) -> Result<f64, AnyError> {
+    let a = a as f64;
+    if a + b >= 0. {
+      Ok(a + b)
+    } else {
+      Err(generic_error("negative!!!"))
+    }
+  }
+
+  #[tokio::test]
+  pub async fn test_op_float() -> Result<(), Box<dyn std::error::Error>> {
+    run_test2(10000, "op_test_float", "assert(op_test_float(1, 10) == 11)")?;
+    run_test2(
+      10000,
+      "op_test_float_result",
+      "assert(op_test_float_result(1, 10) == 11)",
+    )?;
+    run_test2(
+      1,
+      "op_test_float_result",
+      "try { op_test_float_result(-1, -1); assert(false) } catch (e) {}",
     )?;
     Ok(())
   }
